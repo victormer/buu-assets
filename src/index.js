@@ -40,7 +40,7 @@ function gltfLoaderAvailable() {
 
 /**
  * Build the full API URL for a given path.
- * @param {string} path - e.g. '/api/v1/models/public/abc123'
+ * @param {string} path - e.g. '/v1/models/public/abc123'
  * @returns {string}
  */
 function apiUrl(path) {
@@ -60,7 +60,7 @@ function apiUrl(path) {
  * @returns {Promise<object>} - Raw model data from the API
  */
 function fetchModel(modelId) {
-  var url = apiUrl('/api/v1/models/public/' + modelId);
+  var url = apiUrl('/v1/models/public/' + modelId);
   return fetch(url)
     .then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status + ' fetching model ' + modelId);
@@ -75,7 +75,7 @@ function fetchModel(modelId) {
  * @returns {Promise<object>} - Raw world data from the API
  */
 function fetchWorld(worldId) {
-  var url = apiUrl('/api/v1/worlds/public/' + worldId);
+  var url = apiUrl('/v1/worlds/public/' + worldId);
   return fetch(url)
     .then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status + ' fetching world ' + worldId);
