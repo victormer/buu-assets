@@ -1,6 +1,6 @@
 {
   "name": "@victormer/buu-assets",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Asset loader for buu.fun 3D models and worlds. Lazy loading with automatic placeholder fallbacks for games.",
   "main": "dist/buu-assets.js",
   "module": "src/index.js",
