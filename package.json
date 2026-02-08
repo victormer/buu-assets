@@ -1,0 +1,45 @@
+{
+  "name": "@victormer/buu-assets",
+  "version": "1.0.0",
+  "description": "Asset loader for buu.fun 3D models and worlds. Lazy loading with automatic placeholder fallbacks for games.",
+  "main": "dist/buu-assets.js",
+  "module": "src/index.js",
+  "files": [
+    "dist/",
+    "src/"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "buu",
+    "assets",
+    "loader",
+    "3d",
+    "glb",
+    "gltf",
+    "threejs",
+    "splat",
+    "gaussian-splatting",
+    "game",
+    "fallback",
+    "placeholder",
+    "lazy-loading",
+    "atomic-coding"
+  ],
+  "author": "",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/victormer/buu-assets.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "devDependencies": {
+    "rollup": "^4.0.0",
+    "@rollup/plugin-terser": "^0.4.0"
+  }
+}
