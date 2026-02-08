@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------------------
 
 var _apiUrl = 'https://dev.api.buu.fun';
+var _GLTFLoader = null;    // user-provided GLTFLoader class (for ES module setups)
 var _cache = {};           // keyed by type:id  e.g. "model:abc123"
 var _activePolls = {};     // track active polling timers so they can be cancelled
 
@@ -32,9 +33,10 @@ function threeAvailable() {
 }
 
 /**
- * Check if THREE.GLTFLoader is available.
+ * Check if a GLTFLoader is available (user-provided or on window.THREE).
  */
 function gltfLoaderAvailable() {
+  if (_GLTFLoader) return true;
   return threeAvailable() && typeof window.THREE.GLTFLoader !== 'undefined';
 }
 
@@ -177,13 +179,13 @@ function resolveAllFormats(modelData) {
  * @returns {Promise<THREE.Group>} - The loaded scene
  */
 function loadGLB(url) {
-  if (!gltfLoaderAvailable()) {
-    return Promise.reject(new Error('THREE.GLTFLoader not available'));
+  var LoaderClass = _GLTFLoader || (threeAvailable() && window.THREE.GLTFLoader);
+  if (!LoaderClass) {
+    return Promise.reject(new Error('GLTFLoader not available — call BUU.setGLTFLoader(GLTFLoader) first'));
   }
 
-  var T = window.THREE;
   return new Promise(function (resolve, reject) {
-    var loader = new T.GLTFLoader();
+    var loader = new LoaderClass();
     loader.load(
       url,
       // onLoad
@@ -579,6 +581,7 @@ var BUU = {
   // Configuration
   setApiUrl: function (url) { _apiUrl = url || 'https://dev.api.buu.fun'; },
   getApiUrl: function () { return _apiUrl; },
+  setGLTFLoader: function (LoaderClass) { _GLTFLoader = LoaderClass; },
 
   // Model loading (main feature)
   loadModel: loadModel,
