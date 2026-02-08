@@ -27,15 +27,41 @@ import BUU from '@victormer/buu-assets';
 ## Prerequisites
 
 - **THREE.js** must be loaded (detected via `window.THREE`)
-- **THREE.GLTFLoader** must be available (detected via `window.THREE.GLTFLoader`)
+- **GLTFLoader** must be available — either via `window.THREE.GLTFLoader` (classic `<script>` setup) or registered manually with `BUU.setGLTFLoader()` (ES module setup)
 
 Without GLTFLoader, models will remain as placeholder boxes. Without THREE.js, `loadModel` returns `null`.
+
+### GLTFLoader setup (ES modules)
+
+When using Three.js as ES modules, `GLTFLoader` is not on `window.THREE` — you must register it explicitly:
+
+```js
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+BUU.setGLTFLoader(GLTFLoader);
+```
+
+This only needs to be called once, before any `BUU.loadModel()` call.
+
+### GLTFLoader setup (classic script tags)
+
+No extra setup needed — the loader is auto-detected from `window.THREE.GLTFLoader`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/victormer/buu-assets@1.0.0/dist/buu-assets.min.js"></script>
+```
 
 ## Quick Start
 
 ```js
 // Optional: change API endpoint (default: https://dev.api.buu.fun)
 BUU.setApiUrl('https://dev.api.buu.fun');
+
+// Required for ES module setups — register GLTFLoader once
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+BUU.setGLTFLoader(GLTFLoader);
 
 // Load a model — returns immediately with a gray box placeholder
 // Swaps to real GLB when the model finishes generating
@@ -61,6 +87,7 @@ console.log(world.panoramaUrl);   // Panorama image URL
 |--------|---------|-------------|
 | `BUU.setApiUrl(url)` | `void` | Set API base URL (default: `https://dev.api.buu.fun`) |
 | `BUU.getApiUrl()` | `string` | Get current API base URL |
+| `BUU.setGLTFLoader(LoaderClass)` | `void` | Provide a GLTFLoader class (required for ES module setups) |
 
 ### 3D Models
 
