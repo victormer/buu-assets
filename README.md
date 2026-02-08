@@ -28,8 +28,9 @@ import BUU from '@victormer/buu-assets';
 
 - **THREE.js** must be loaded (detected via `window.THREE`)
 - **GLTFLoader** must be available — either via `window.THREE.GLTFLoader` (classic `<script>` setup) or registered manually with `BUU.setGLTFLoader()` (ES module setup)
+- **GaussianSplats3D** (optional) — needed only for loading Gaussian Splat files (`.spz`, `.ply`, `.splat`, `.ksplat`). Either via `window.GaussianSplats3D` or registered with `BUU.setGaussianSplats3D()`
 
-Without GLTFLoader, models will remain as placeholder boxes. Without THREE.js, `loadModel` returns `null`.
+Without GLTFLoader, models will remain as placeholder boxes. Without THREE.js, `loadModel` returns `null`. Without GaussianSplats3D, `loadSplat` returns `null`.
 
 ### GLTFLoader setup (ES modules)
 
@@ -42,6 +43,24 @@ BUU.setGLTFLoader(GLTFLoader);
 ```
 
 This only needs to be called once, before any `BUU.loadModel()` call.
+
+### GaussianSplats3D setup (ES modules)
+
+When using Gaussian Splat loading (SPZ worlds), register the library once:
+
+```js
+import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
+
+BUU.setGaussianSplats3D(GaussianSplats3D);
+```
+
+### GaussianSplats3D setup (classic script tags)
+
+No extra setup needed — auto-detected from `window.GaussianSplats3D`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@mkkellogg/gaussian-splats-3d/build/gaussian-splats-3d.umd.min.js"></script>
+```
 
 ### GLTFLoader setup (classic script tags)
 
@@ -77,6 +96,18 @@ scene.add(group);
 var world = await BUU.loadWorld('world-id-here');
 console.log(world.splatUrl);      // Best splat file URL
 console.log(world.panoramaUrl);   // Panorama image URL
+
+// Load a Gaussian Splat (SPZ) directly into the scene
+import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
+BUU.setGaussianSplats3D(GaussianSplats3D);
+
+var viewer = await BUU.loadSplat(world.splatUrl);
+scene.add(viewer);
+
+// Or use the combined world + splat loader
+var result = await BUU.loadWorldSplat('world-id-here');
+scene.add(result.viewer);  // DropInViewer with the splat scene
+console.log(result.world); // World data (panorama, caption, etc.)
 ```
 
 ## API
@@ -88,6 +119,7 @@ console.log(world.panoramaUrl);   // Panorama image URL
 | `BUU.setApiUrl(url)` | `void` | Set API base URL (default: `https://dev.api.buu.fun`) |
 | `BUU.getApiUrl()` | `string` | Get current API base URL |
 | `BUU.setGLTFLoader(LoaderClass)` | `void` | Provide a GLTFLoader class (required for ES module setups) |
+| `BUU.setGaussianSplats3D(GS3DModule)` | `void` | Provide GaussianSplats3D module (required for ES module setups) |
 
 ### 3D Models
 
@@ -182,6 +214,93 @@ Fetch world data and resolve asset URLs. Returns structured data with the best a
 
 Low-level fetch of world data from `/v1/worlds/public/:worldId`.
 
+### Gaussian Splat Loading
+
+#### `BUU.loadSplat(url, options?)` → `Promise<DropInViewer|null>`
+
+Load a Gaussian Splat file (`.spz`, `.ply`, `.splat`, `.ksplat`) and return a `DropInViewer` that can be added directly to a Three.js scene. Requires GaussianSplats3D to be available.
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `position` | `number[]` | — | `[x, y, z]` scene position offset |
+| `rotation` | `number[]` | — | `[x, y, z, w]` quaternion rotation |
+| `scale` | `number[]` | — | `[x, y, z]` scale |
+| `splatAlphaRemovalThreshold` | `number` | `5` | Alpha threshold (0-255) |
+| `showLoadingUI` | `boolean` | `false` | Show loading spinner |
+| `progressiveLoad` | `boolean` | `false` | Load splats progressively |
+| `format` | `string` | — | Force format: `'ply'`, `'splat'`, `'ksplat'`, `'spz'` |
+| `viewer` | `object` | — | Override DropInViewer constructor options |
+| `onLoad` | `function` | — | Called with `(viewer)` when loaded |
+| `onError` | `function` | — | Called with `(error)` on failure |
+
+```js
+// Load an SPZ file directly
+var viewer = await BUU.loadSplat('https://example.com/scene.spz', {
+  position: [0, -1, 0],
+  scale: [2, 2, 2],
+  onLoad: function(v) { console.log('Splat loaded!'); }
+});
+scene.add(viewer);
+
+// With advanced viewer options
+var viewer = await BUU.loadSplat(url, {
+  viewer: {
+    sphericalHarmonicsDegree: 2,
+    gpuAcceleratedSort: true,
+  }
+});
+scene.add(viewer);
+```
+
+#### `BUU.loadWorldSplat(worldId, options?)` → `Promise<{ world, viewer }>`
+
+Convenience method: fetches world data, then loads the best available splat into a `DropInViewer`.
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `splatResolution` | `string` | `'auto'` | `'high'`, `'medium'`, `'low'`, or `'auto'` (best available) |
+| `world` | `object` | — | Options passed to `loadWorld()` |
+| `splat` | `object` | — | Options passed to `loadSplat()` |
+| `onLoad` | `function` | — | Called with `({ world, viewer })` |
+| `onError` | `function` | — | Called with `(error)` |
+
+**Returns:**
+
+```js
+{
+  world: { ... },   // World data (same as loadWorld result)
+  viewer: <DropInViewer>  // scene.add()-able splat viewer, or null
+}
+```
+
+```js
+// Load world + splat in one call
+var result = await BUU.loadWorldSplat('world-id', {
+  splatResolution: 'medium',
+  splat: { position: [0, -1, 0] },
+  onLoad: function(r) { console.log('World splat ready!', r.world.displayName); }
+});
+scene.add(result.viewer);
+
+// Use the world data too
+if (result.world.panoramaUrl) {
+  loadPanorama(result.world.panoramaUrl);
+}
+```
+
+#### `BUU.disposeSplat(viewer)` → `void`
+
+Dispose of a `DropInViewer` returned by `loadSplat` or `loadWorldSplat`. Removes it from the parent scene and cleans up GPU resources and workers.
+
+```js
+// Clean up when done
+BUU.disposeSplat(viewer);
+```
+
 ### Placeholders
 
 #### `BUU.createPlaceholderBox(options?)` → `THREE.Mesh`
@@ -216,6 +335,7 @@ Create a solid-color box mesh. Used internally by `loadModel`, but available for
 |--------|---------|-------------|
 | `BUU.isThreeAvailable()` | `boolean` | Check if THREE.js is loaded |
 | `BUU.isGLTFLoaderAvailable()` | `boolean` | Check if GLTFLoader is available |
+| `BUU.isGaussianSplats3DAvailable()` | `boolean` | Check if GaussianSplats3D is available |
 | `BUU.getCachedModel(id)` | `object\|null` | Get cached model `{ group, loaded }` |
 | `BUU.getCachedWorld(id)` | `object\|null` | Get cached world data |
 | `BUU.clearCache()` | `void` | Clear cache and cancel all polls |
@@ -241,6 +361,7 @@ Model has texturedMesh.url? → Load GLB → Swap placeholder → onSwap() callb
 | Model still generating | Gray box placeholder, polls until mesh URL appears |
 | GLTFLoader not available | Gray box placeholder stays, warning in console |
 | THREE.js not loaded | `loadModel` returns `null`, warning in console |
+| GaussianSplats3D not loaded | `loadSplat` returns `null`, warning in console |
 | Network error on fetch | Retries on next poll interval |
 | GLB load fails | Retries on next poll interval |
 | Max poll time reached | Stops polling, placeholder remains |

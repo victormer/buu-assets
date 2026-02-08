@@ -15,9 +15,10 @@
 // ---------------------------------------------------------------------------
 
 var _apiUrl = 'https://dev.api.buu.fun';
-var _GLTFLoader = null;    // user-provided GLTFLoader class (for ES module setups)
-var _cache = {};           // keyed by type:id  e.g. "model:abc123"
-var _activePolls = {};     // track active polling timers so they can be cancelled
+var _GLTFLoader = null;           // user-provided GLTFLoader class (for ES module setups)
+var _GaussianSplats3D = null;     // user-provided GaussianSplats3D module (for SPZ/splat loading)
+var _cache = {};                  // keyed by type:id  e.g. "model:abc123"
+var _activePolls = {};            // track active polling timers so they can be cancelled
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,6 +39,25 @@ function threeAvailable() {
 function gltfLoaderAvailable() {
   if (_GLTFLoader) return true;
   return threeAvailable() && typeof window.THREE.GLTFLoader !== 'undefined';
+}
+
+/**
+ * Check if GaussianSplats3D is available (user-provided or on window).
+ */
+function gaussianSplats3DAvailable() {
+  if (_GaussianSplats3D) return true;
+  return typeof window !== 'undefined' &&
+    typeof window.GaussianSplats3D !== 'undefined' &&
+    window.GaussianSplats3D !== null;
+}
+
+/**
+ * Internal: get the GaussianSplats3D module from user-provided or window.
+ */
+function _getGS3D() {
+  if (_GaussianSplats3D) return _GaussianSplats3D;
+  if (typeof window !== 'undefined' && window.GaussianSplats3D) return window.GaussianSplats3D;
+  return null;
 }
 
 /**
@@ -534,6 +554,181 @@ function loadWorld(worldId, options) {
 }
 
 // ---------------------------------------------------------------------------
+// Splat Loader (Gaussian Splatting)
+// ---------------------------------------------------------------------------
+
+/**
+ * Load a Gaussian Splat scene from a URL (.spz, .ply, .splat, .ksplat).
+ *
+ * Returns a GaussianSplats3D DropInViewer that can be added directly to a
+ * Three.js scene with scene.add(viewer).
+ *
+ * Requires GaussianSplats3D — either via window.GaussianSplats3D (script tag)
+ * or registered with BUU.setGaussianSplats3D() (ES modules).
+ *
+ * @param {string} url - URL to the splat file
+ * @param {object} [options]
+ * @param {number[]} [options.position]   - [x,y,z] scene offset
+ * @param {number[]} [options.rotation]   - [x,y,z,w] quaternion
+ * @param {number[]} [options.scale]      - [x,y,z] scale
+ * @param {number}   [options.splatAlphaRemovalThreshold] - Alpha threshold (0-255), default 5
+ * @param {boolean}  [options.showLoadingUI]    - Show loading indicator, default false
+ * @param {boolean}  [options.progressiveLoad]  - Load progressively, default false
+ * @param {string}   [options.format]     - Force format: 'ply','splat','ksplat','spz'
+ * @param {object}   [options.viewer]     - DropInViewer constructor options override
+ * @param {function} [options.onLoad]     - Called with (viewer) when splat scene is loaded
+ * @param {function} [options.onError]    - Called with (error) on failure
+ * @returns {Promise<object|null>}        - DropInViewer instance (scene.add-able), or null
+ */
+function loadSplat(url, options) {
+  var GS3D = _getGS3D();
+  if (!GS3D) {
+    console.warn('[BUU] loadSplat: GaussianSplats3D not available — call BUU.setGaussianSplats3D() or load via <script>');
+    return Promise.resolve(null);
+  }
+
+  var opts = options || {};
+  var onLoad = opts.onLoad || function () {};
+  var onError = opts.onError || function () {};
+
+  // DropInViewer config — sensible defaults for game/embed usage
+  var viewerDefaults = {
+    gpuAcceleratedSort: true,
+    sharedMemoryForWorkers: true,
+    sphericalHarmonicsDegree: 0,
+  };
+  // Apply LogLevel.None if enum exists
+  if (GS3D.LogLevel) viewerDefaults.logLevel = GS3D.LogLevel.None;
+  // Apply SceneRevealMode.Gradual if enum exists
+  if (GS3D.SceneRevealMode) viewerDefaults.sceneRevealMode = GS3D.SceneRevealMode.Gradual;
+
+  var viewerOpts = opts.viewer || {};
+  var viewerConfig = {};
+  var key;
+
+  // Merge defaults (user overrides win)
+  for (key in viewerDefaults) {
+    if (viewerDefaults.hasOwnProperty(key)) {
+      viewerConfig[key] = viewerOpts[key] !== undefined ? viewerOpts[key] : viewerDefaults[key];
+    }
+  }
+  // Copy any extra user viewer options
+  for (key in viewerOpts) {
+    if (viewerOpts.hasOwnProperty(key) && viewerConfig[key] === undefined) {
+      viewerConfig[key] = viewerOpts[key];
+    }
+  }
+
+  var viewer;
+  try {
+    viewer = new GS3D.DropInViewer(viewerConfig);
+  } catch (err) {
+    console.warn('[BUU] Failed to create DropInViewer: ' + err.message);
+    onError(err);
+    return Promise.resolve(null);
+  }
+
+  // Scene-level options for addSplatScene
+  var sceneConfig = {
+    splatAlphaRemovalThreshold: opts.splatAlphaRemovalThreshold !== undefined ? opts.splatAlphaRemovalThreshold : 5,
+    showLoadingUI: opts.showLoadingUI !== undefined ? opts.showLoadingUI : false,
+    progressiveLoad: opts.progressiveLoad || false,
+  };
+  if (opts.position) sceneConfig.position = opts.position;
+  if (opts.rotation) sceneConfig.rotation = opts.rotation;
+  if (opts.scale) sceneConfig.scale = opts.scale;
+  if (opts.format) sceneConfig.format = opts.format;
+
+  // Tag the viewer for BUU tracking
+  viewer._buuSplatUrl = url;
+
+  return viewer.addSplatScene(url, sceneConfig)
+    .then(function () {
+      onLoad(viewer);
+      return viewer;
+    })
+    .catch(function (err) {
+      console.warn('[BUU] Failed to load splat from ' + url + ': ' + (err.message || err));
+      onError(err);
+      return null;
+    });
+}
+
+/**
+ * Load a world and its Gaussian Splat scene in one call.
+ * Convenience wrapper: fetches world data, then loads the best splat URL.
+ *
+ * @param {string} worldId
+ * @param {object} [options]
+ * @param {string}   [options.splatResolution] - 'high','medium','low','auto' (default: 'auto')
+ * @param {object}   [options.world]   - Options passed to loadWorld()
+ * @param {object}   [options.splat]   - Options passed to loadSplat()
+ * @param {function} [options.onLoad]  - Called with ({ world, viewer }) when both are ready
+ * @param {function} [options.onError] - Called with (error)
+ * @returns {Promise<object>}          - { world, viewer }
+ */
+function loadWorldSplat(worldId, options) {
+  var opts = options || {};
+  var splatResolution = opts.splatResolution || 'auto';
+  var worldOpts = opts.world || {};
+  var splatOpts = opts.splat || {};
+  var onLoad = opts.onLoad || function () {};
+  var onError = opts.onError || function () {};
+
+  return loadWorld(worldId, worldOpts)
+    .then(function (worldData) {
+      // Pick splat URL based on resolution preference
+      var splatUrl;
+      if (splatResolution === 'high' && worldData.splats.highRes) {
+        splatUrl = worldData.splats.highRes;
+      } else if (splatResolution === 'medium' && worldData.splats.mediumRes) {
+        splatUrl = worldData.splats.mediumRes;
+      } else if (splatResolution === 'low' && worldData.splats.lowRes) {
+        splatUrl = worldData.splats.lowRes;
+      } else {
+        // 'auto': best available (highRes > mediumRes > lowRes)
+        splatUrl = worldData.splatUrl;
+      }
+
+      if (!splatUrl) {
+        console.warn('[BUU] No splat URL available for world ' + worldId);
+        var result = { world: worldData, viewer: null };
+        onLoad(result);
+        return result;
+      }
+
+      return loadSplat(splatUrl, splatOpts)
+        .then(function (viewer) {
+          var result = { world: worldData, viewer: viewer };
+          onLoad(result);
+          return result;
+        });
+    })
+    .catch(function (err) {
+      console.warn('[BUU] Error loading world splat for ' + worldId + ': ' + (err.message || err));
+      onError(err);
+      return { world: null, viewer: null };
+    });
+}
+
+/**
+ * Dispose of a DropInViewer returned by loadSplat / loadWorldSplat.
+ * Cleans up GPU resources, workers, and removes it from its parent scene.
+ *
+ * @param {object} viewer - The DropInViewer instance
+ */
+function disposeSplat(viewer) {
+  if (!viewer) return;
+  // Remove from parent scene if attached
+  if (viewer.parent) {
+    viewer.parent.remove(viewer);
+  }
+  if (typeof viewer.dispose === 'function') {
+    try { viewer.dispose(); } catch (e) { /* ignore */ }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Cache utilities
 // ---------------------------------------------------------------------------
 
@@ -582,12 +777,18 @@ var BUU = {
   setApiUrl: function (url) { _apiUrl = url || 'https://dev.api.buu.fun'; },
   getApiUrl: function () { return _apiUrl; },
   setGLTFLoader: function (LoaderClass) { _GLTFLoader = LoaderClass; },
+  setGaussianSplats3D: function (GS3DModule) { _GaussianSplats3D = GS3DModule; },
 
   // Model loading (main feature)
   loadModel: loadModel,
 
   // World loading
   loadWorld: loadWorld,
+
+  // Splat loading (Gaussian Splatting — SPZ, PLY, SPLAT, KSPLAT)
+  loadSplat: loadSplat,
+  loadWorldSplat: loadWorldSplat,
+  disposeSplat: disposeSplat,
 
   // Low-level fetchers
   fetchModel: fetchModel,
@@ -614,6 +815,7 @@ var BUU = {
   // Runtime detection
   isThreeAvailable: threeAvailable,
   isGLTFLoaderAvailable: gltfLoaderAvailable,
+  isGaussianSplats3DAvailable: gaussianSplats3DAvailable,
 };
 
 export default BUU;
