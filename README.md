@@ -101,7 +101,7 @@ scene.add(prop);
 
 #### `BUU.fetchModel(modelId)` → `Promise<object>`
 
-Low-level fetch of model data from `/api/v1/models/public/:modelId`. Returns the raw API response.
+Low-level fetch of model data from `/v1/models/public/:modelId`. Returns the raw API response.
 
 ```js
 var data = await BUU.fetchModel('model-id');
@@ -153,7 +153,7 @@ Fetch world data and resolve asset URLs. Returns structured data with the best a
 
 #### `BUU.fetchWorld(worldId)` → `Promise<object>`
 
-Low-level fetch of world data from `/api/v1/worlds/public/:worldId`.
+Low-level fetch of world data from `/v1/worlds/public/:worldId`.
 
 ### Placeholders
 
@@ -202,7 +202,7 @@ BUU.loadModel(modelId, { width: 1, height: 2, depth: 1 })
        ↓
 Returns THREE.Group with gray box → scene.add(group) → game is playable!
        ↓ (background)
-Polls GET /api/v1/models/public/:modelId every 5s
+Polls GET /v1/models/public/:modelId every 5s
        ↓
 Model has texturedMesh.url? → Load GLB → Swap placeholder → onSwap() callback
 ```
